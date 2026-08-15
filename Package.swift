@@ -32,6 +32,8 @@ let package = Package(
                 "ProxyAppsContentView.swift",
                 "ProxyAppsController.swift",
                 "ProxyAppsManager.swift",
+                "PACServer.swift",
+                "SystemPACManager.swift",
             ]
         ),
         .testTarget(

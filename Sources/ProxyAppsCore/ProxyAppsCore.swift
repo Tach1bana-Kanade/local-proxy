@@ -51,7 +51,7 @@ public struct ProxyPortConnection: Equatable, Identifiable, Sendable {
 
 public enum DiagnosticParser {
     public static func systemProxyEnabled(in output: String) -> Bool {
-        let enabledKeys = ["HTTPEnable", "HTTPSEnable", "SOCKSEnable"]
+        let enabledKeys = ["HTTPEnable", "HTTPSEnable", "SOCKSEnable", "ProxyAutoConfigEnable"]
         return output.split(separator: "\n").contains { line in
             let compact = line.replacingOccurrences(of: " ", with: "")
             return enabledKeys.contains { compact == "\($0):1" }

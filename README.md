@@ -1,103 +1,71 @@
 # Proxy Apps
 
-Proxy Apps 是一个仅供个人使用的 macOS 本地工具。电脑默认保持直连；只有从本工具点击“代理启动”的应用会收到 Quickcat 代理环境变量。
+Proxy Apps 是一个 macOS SwiftUI 局部代理工具，使用 Quickcat 的本机 HTTP/SOCKS5 端口，并提供两种彼此独立的白名单：
 
-新版 SwiftUI 入口不使用 Mihomo、不使用 TUN、不需要管理员权限，也不会修改 Quickcat、系统代理、DNS、路由、Shell 配置或 `launchctl` 全局环境。
+- **App 白名单**：通过“代理启动”给选定 App 注入 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 等环境变量；“普通启动”不注入。
+- **网站白名单**：通过仅监听 `127.0.0.1` 的 PAC 服务，使遵循 macOS 自动代理配置的 App 只代理已启用域名及其子域名。
+
+未加入网站列表的域名始终由 PAC 返回 `DIRECT`。命中规则只返回 `PROXY 127.0.0.1:21081`，Quickcat 断开时不会静默回退直连。
+
+正式 `LocalProxyApp` 不依赖或启动 Mihomo，不创建 TUN，不修改 DNS、路由、Quickcat 账号、订阅、节点或内部配置，也不安装 HTTPS 根证书。
+
+## 环境与构建
+
+要求 macOS 12 或更新版本。Quickcat 需要处于纯代理模式并提供：
+
+- HTTP：`127.0.0.1:21081`
+- SOCKS5：`127.0.0.1:21080`
+
+```bash
+swift test --disable-sandbox
+./scripts/build-app.sh
+```
+
+构建脚本会在 `dist/` 创建带时间戳的 `ProxyApps-*.app`，不会覆盖旧构建。
 
 ## 使用
 
-要求 macOS 12 或更新版本。先手动配置 Quickcat：纯代理、全局模式、节点已连接，SOCKS5 为 `127.0.0.1:21080`，HTTP 为 `127.0.0.1:21081`，系统代理和 TUN 均关闭。
+### App 白名单
 
-```bash
-./scripts/build-app.sh
-```
+1. 点击“添加应用”选择 `.app`。
+2. 确保目标 App 已完全退出。
+3. 点击“代理启动”注入 Quickcat 环境变量，或点击“普通启动”不使用这些变量。
 
-脚本会在 `dist/` 创建带时间戳的 `ProxyApps-*.app`。应用会按 Bundle ID `com.openai.codex` 查找本机 Codex，并允许添加其他 `.app`。
+这种方式只对支持代理环境变量的 App 生效，不会影响未添加的 App。
 
-- “代理启动”仅为目标应用及其子进程设置 HTTP、HTTPS、ALL 和 NO_PROXY 的大小写环境变量。
-- “普通启动”不设置任何代理变量。
-- 应用已经运行时不会自动结束，而会提示完全退出后重试。
-- “检查连接”只读调用 `scutil --proxy` 和 `lsof`。
-- 应用列表和少量错误日志保存在 `~/Library/Application Support/Proxy Apps/`。
+### 网站白名单
 
-## 限制
+1. 输入 `github.com`、`www.github.com` 或完整的 `https://github.com/path`，点击“添加网站”。
+2. 通过单条开关决定规则是否参与 PAC。
+3. 确保 Quickcat HTTP 端口可用，打开“网站代理”总开关。
+4. App 会保存所有当前启用、有网络接口的网络服务原 PAC 状态，然后设置本机 PAC URL。
+5. 关闭总开关或正常退出 App 时，原设置会恢复。
 
-只有支持代理环境变量的应用才能正常使用。部分桌面程序、后台服务、UDP 或 QUIC 流量可能不支持。`socks5h` 只对正确支持它的客户端提供代理端域名解析，本工具不能强制不支持环境变量的应用走代理。
+网站代理只对遵循 macOS 自动代理配置的 App 生效。应用会拒绝 IP、localhost、`.local`、通配符、凭据、端口、非法域名和非 ASCII 域名；当前版本可输入 IDN 的 ASCII/Punycode 形式。
 
-## 历史 Mihomo/TUN 原型
+如果 App 异常退出，下一次启动会显示“需要恢复”。恢复前会确认当前 PAC 仍是本工具设置；若其他程序或用户已经修改 PAC，App 不会自动覆盖，并会显示冲突值供确认。
 
-仓库仍保留早期 LocalProxy 阶段验证源码和测试，便于参考与回溯，但新版 Proxy Apps 应用入口不调用这些代码。
+## 数据和权限
 
-LocalProxy 原型是一个面向 macOS 的“默认直连、按规则代理”技术验证：提供 Swift 命令行原型，用于维护规则、生成 Mihomo TUN 配置，以及诊断本机 Quickcat 入口。
+数据位于 `~/Library/Application Support/Proxy Apps/`：
 
-## 历史原型能力
+- `applications.json`：App 列表
+- `websites.json`：网站规则
+- `pac-settings.json`：网站代理开关与 PAC 端口
+- `pac-restore-state.json`：应用 PAC 前的恢复快照（成功恢复后删除）
+- `errors.log`：截断保留的少量错误日志
 
-- JSON 规则模型：网站、IP/CIDR、应用可执行路径。
-- 规则动作：`QUICKCAT`、`DIRECT`、`REJECT`。
-- 输入标准化：移除 URL scheme、路径、查询参数并转为小写。
-- 拒绝非法域名、非法 IP、过宽 CIDR 和可能注入配置的应用路径。
-- 按固定优先级生成 Mihomo YAML，最终规则始终为 `MATCH,DIRECT`。
-- Quickcat、Mihomo、本地、局域网和保留地址优先直连。
-- 控制 API 仅监听回环地址，每次生成随机 256-bit 令牌。
-- SOCKS5 UDP 默认关闭；防泄漏策略仅拒绝命中代理规则的 UDP，不影响未命中流量直连。
-- 生成文件使用 `0600` 权限且不覆盖已有文件。
+目录权限为 `0700`，文件权限为 `0600`，JSON 使用原子写入。系统 PAC 使用 `/usr/sbin/networksetup` 的固定参数数组操作，不拼接 Shell 命令，也不改动 HTTP、HTTPS、SOCKS 手动代理。
 
-## 开始使用
-
-要求：macOS、Apple Silicon、Swift 5.8 或更新版本。产品目标仍为 Swift 6；阶段 0 暂时兼容当前机器上的 Swift 5.8。
-
-```bash
-swift build
-swift run localproxy init localproxy.json
-swift run localproxy validate localproxy.json
-swift run localproxy diagnose localproxy.json
-swift run localproxy generate localproxy.json mihomo.yaml
-```
-
-生成配置不会启动 Mihomo。安装 Mihomo 后，可先执行其只读配置检查：
-
-```bash
-mihomo -t -f mihomo.yaml
-```
-
-## 图形界面
-
-生成可双击运行的 macOS 应用：
-
-```bash
-./scripts/build-app.sh
-```
-
-脚本会在 `dist/` 中创建一个带时间戳的新 `.app`，不会覆盖已有应用。打开应用后：
-
-1. 保持 Quickcat 已连接，并选择“纯代理”；Quickcat 的 TUN 和系统代理都应关闭。
-2. 确认界面的 Quickcat 与系统代理状态正常。
-3. 点击“一键开启局部代理”，通过 macOS 管理员授权。
-4. 点击“停止并恢复直连”会校验进程身份后终止 Mihomo。
-
-“规则”页可以添加应用和域名。首轮默认包含 ChatGPT/Codex 相关进程，避免关闭 Quickcat 系统代理后 Codex 无法连接。
-
-当前 GUI 是个人技术验证版本，使用 macOS 管理员授权将固定 Mihomo 命令提交给临时 `launchd` 服务；关闭管理员会话不会终止核心。停止按钮会校验进程身份并移除该服务。产品化版本仍需改用签名的最小权限 Helper。
-
-在配置检查、基线记录和人工确认全部完成前，不要以管理员权限启动 TUN。参考 [阶段 0 测试说明](docs/testing.md)。
-
-## 项目结构
+## 架构
 
 ```text
-Sources/LocalProxyCore/   规则、校验、端口探测、配置生成
-Sources/LocalProxyCLI/    阶段 0 命令行入口
-Tests/                    单元测试
-docs/                     架构、安全、规则和测试说明
-scripts/                  只读诊断与网络快照脚本
+Sources/ProxyAppsCore/    网站模型、标准化、PAC 生成、系统 PAC 事务与解析
+Sources/LocalProxyApp/    SwiftUI、App 启动、持久化、回环 PAC 服务、networksetup 适配
+Sources/LocalProxyCore/   仅保留的历史原型核心，不属于正式 App 依赖
+Tests/                    纯逻辑和 fake 系统 PAC 测试，不修改开发机网络
 ```
 
-## 开发环境备注（2026-08-09）
+仓库中的 `LocalProxyCore`、CLI、Mihomo 配置生成器及旧 SwiftUI 文件仅为历史技术验证资料。`Package.swift` 明确排除旧 `ProxyManager.swift`、`RulesView.swift` 等文件，正式 App 不会调用它们。
 
-- 2026-08-09 已验证 Xcode 26.6、Swift 6.3.3 与 Mihomo 1.19.29（darwin/arm64）。
-- 项目完整构建通过，8 个单元测试全部通过。
-- 生成的阶段 0 配置已通过 `mihomo -t` 校验。
-- Quickcat 端口状态会随连接状态变化，请以 `./scripts/diagnose.sh` 的即时结果为准。
-
-## 安全边界
-
-本项目不读取或修改 Quickcat 的账号、订阅和内部文件，不安装 HTTPS 根证书，不解密流量。阶段 0 只负责生成配置和诊断；真正启停 TUN 与最小权限 Helper 留在后续阶段实现。
+详细人工验收与恢复步骤见 [docs/testing.md](docs/testing.md)。

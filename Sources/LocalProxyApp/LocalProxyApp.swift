@@ -9,7 +9,10 @@ struct LocalProxyDesktopApp: App {
         WindowGroup {
             ProxyAppsContentView()
                 .environmentObject(controller)
-                .frame(minWidth: 720, minHeight: 620)
+                .frame(minWidth: 760, minHeight: 720)
+                .onAppear {
+                    applicationDelegate.terminationHandler = { controller.shutdownForTermination() }
+                }
                 .task { await controller.monitorStatus() }
         }
     }

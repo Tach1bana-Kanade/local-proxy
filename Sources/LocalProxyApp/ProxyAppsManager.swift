@@ -19,6 +19,9 @@ final class ProxyAppsManager {
     private let fileManager = FileManager.default
     private let appSupportDirectory: URL
     private let applicationsURL: URL
+    private let websitesURL: URL
+    private let pacSettingsURL: URL
+    private let restoreStateURL: URL
     private let logURL: URL
 
     init() {
@@ -26,6 +29,9 @@ final class ProxyAppsManager {
             .appendingPathComponent("Proxy Apps", isDirectory: true)
         appSupportDirectory = base
         applicationsURL = base.appendingPathComponent("applications.json")
+        websitesURL = base.appendingPathComponent("websites.json")
+        pacSettingsURL = base.appendingPathComponent("pac-settings.json")
+        restoreStateURL = base.appendingPathComponent("pac-restore-state.json")
         logURL = base.appendingPathComponent("errors.log")
     }
 
@@ -40,11 +46,36 @@ final class ProxyAppsManager {
     }
 
     func saveApplications(_ applications: [ManagedApplication]) throws {
-        try createDirectory()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        try encoder.encode(applications).write(to: applicationsURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: applicationsURL.path)
+        try save(applications, to: applicationsURL)
+    }
+
+    func loadWebsites() -> [ManagedWebsite] {
+        load([ManagedWebsite].self, from: websitesURL) ?? []
+    }
+
+    func saveWebsites(_ websites: [ManagedWebsite]) throws {
+        try save(websites, to: websitesURL)
+    }
+
+    func loadPACSettings() -> PACSettings {
+        load(PACSettings.self, from: pacSettingsURL) ?? PACSettings()
+    }
+
+    func savePACSettings(_ settings: PACSettings) throws {
+        try save(settings, to: pacSettingsURL)
+    }
+
+    func loadRestoreSnapshot() -> NetworkServiceProxySnapshot? {
+        load(NetworkServiceProxySnapshot.self, from: restoreStateURL)
+    }
+
+    func saveRestoreSnapshot(_ snapshot: NetworkServiceProxySnapshot) throws {
+        try save(snapshot, to: restoreStateURL)
+    }
+
+    func deleteRestoreSnapshot() throws {
+        guard fileManager.fileExists(atPath: restoreStateURL.path) else { return }
+        try fileManager.removeItem(at: restoreStateURL)
     }
 
     func application(from bundleURL: URL) throws -> ManagedApplication {
@@ -84,6 +115,11 @@ final class ProxyAppsManager {
         }
     }
 
+    func isChromiumApplication(_ application: ManagedApplication) -> Bool {
+        let url = URL(fileURLWithPath: application.bundlePath, isDirectory: true)
+        return ChromiumApplicationDetector.detect(bundleURL: url).isChromium
+    }
+
     func launch(_ application: ManagedApplication, usingProxy: Bool) async throws {
         guard !isRunning(application) else { throw ProxyAppsError.applicationAlreadyRunning }
         let url = URL(fileURLWithPath: application.bundlePath, isDirectory: true)
@@ -93,6 +129,18 @@ final class ProxyAppsManager {
         configuration.activates = true
         if usingProxy {
             configuration.environment = ProxyEnvironment.values
+            let detection = ChromiumApplicationDetector.detect(bundleURL: url)
+            switch detection {
+            case .chromium:
+                configuration.arguments.append(contentsOf: ProxyLaunchArguments.arguments(
+                    usingProxy: true,
+                    isChromium: true
+                ))
+            case .notChromium:
+                break
+            case .unreadable(let detail):
+                record(ChromiumDetectionError(detail: detail))
+            }
         }
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -169,6 +217,19 @@ final class ProxyAppsManager {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: appSupportDirectory.path)
     }
 
+    private func load<Value: Decodable>(_ type: Value.Type, from url: URL) -> Value? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
+    private func save<Value: Encodable>(_ value: Value, to url: URL) throws {
+        try createDirectory()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(value).write(to: url, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
     private static func runProcess(_ executable: String, arguments: [String]) throws -> (status: Int32, output: String) {
         let process = Process()
         let pipe = Pipe()
@@ -183,12 +244,24 @@ final class ProxyAppsManager {
     }
 }
 
+private struct ChromiumDetectionError: LocalizedError {
+    let detail: String
+
+    var errorDescription: String? {
+        "Chromium 内核识别失败，已保守地仅注入代理环境变量。\(detail)"
+    }
+}
+
 enum ProxyAppsError: LocalizedError {
     case invalidApplication
     case duplicateApplication
+    case duplicateWebsite
     case applicationAlreadyRunning
     case applicationMissing(String)
     case quickcatUnavailable
+    case quickcatHTTPUnavailable
+    case enabledWebsiteRequired
+    case pacUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -196,12 +269,20 @@ enum ProxyAppsError: LocalizedError {
             return "无法读取所选应用，请选择一个有效的 .app。"
         case .duplicateApplication:
             return "该应用已经在列表中。"
+        case .duplicateWebsite:
+            return "该网站已经在列表中。"
         case .applicationAlreadyRunning:
-            return "该应用已经运行，请完全退出后再使用代理启动。"
+            return "该应用已经运行。请先完全退出该应用再从本工具启动，代理参数才能生效。"
         case .applicationMissing(let path):
             return "找不到应用：\(path)"
         case .quickcatUnavailable:
             return "Quickcat 代理不可用，请启动 Quickcat、连接节点，并确认本地端口 21080 和 21081 已开启。"
+        case .quickcatHTTPUnavailable:
+            return "Quickcat HTTP 代理不可用，请启动 Quickcat、连接节点，并确认 127.0.0.1:21081 可连接。"
+        case .enabledWebsiteRequired:
+            return "网站代理至少需要一条已启用的网站规则。请先关闭网站代理总开关。"
+        case .pacUnavailable:
+            return "本机 PAC 文件服务未能通过读取检查，系统代理尚未修改。"
         }
     }
 }
