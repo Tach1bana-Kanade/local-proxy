@@ -1,0 +1,23 @@
+{
+  "applicationRules": [],
+  "diagnosticMixedPort": 17890,
+  "domainRules": [
+    {
+      "action": "QUICKCAT",
+      "enabled": true,
+      "id": "00000000-0000-0000-0000-000000000002",
+      "match": "exact",
+      "value": "www.gstatic.com"
+    }
+  ],
+  "failurePolicy": "block",
+  "mihomoExecutablePath": "/opt/homebrew/bin/mihomo",
+  "quickcatExecutablePath": "/Applications/Quickcat.app/Contents/MacOS/Quickcat",
+  "tunEnabled": false,
+  "upstream": {
+    "host": "127.0.0.1",
+    "httpPort": 21081,
+    "socksPort": 21080,
+    "udpEnabled": false
+  }
+}

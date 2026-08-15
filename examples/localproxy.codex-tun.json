@@ -1,0 +1,53 @@
+{
+  "applicationRules": [
+    {
+      "action": "QUICKCAT",
+      "bundleIdentifier": "com.openai.chat",
+      "displayName": "ChatGPT",
+      "enabled": true,
+      "executableName": "ChatGPT",
+      "executablePath": "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+      "id": "00000000-0000-0000-0000-000000000010",
+      "includeHelpers": false
+    },
+    {
+      "action": "QUICKCAT",
+      "displayName": "Codex CLI",
+      "enabled": true,
+      "executableName": "codex",
+      "executablePath": "/Applications/ChatGPT.app/Contents/Resources/codex",
+      "id": "00000000-0000-0000-0000-000000000011",
+      "includeHelpers": false
+    },
+    {
+      "action": "QUICKCAT",
+      "displayName": "Codex Service",
+      "enabled": true,
+      "executableName": "Codex (Service)",
+      "executablePath": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/151.0.7922.76/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)",
+      "id": "00000000-0000-0000-0000-000000000012",
+      "includeHelpers": false
+    },
+    {
+      "action": "QUICKCAT",
+      "bundleIdentifier": "com.openai.chat",
+      "displayName": "ChatGPT Helper",
+      "enabled": true,
+      "executableName": "ChatGPTHelper",
+      "executablePath": "/Applications/ChatGPT.app/Contents/Resources/native/codex-macos",
+      "id": "00000000-0000-0000-0000-000000000013",
+      "includeHelpers": false
+    }
+  ],
+  "domainRules": [],
+  "failurePolicy": "block",
+  "mihomoExecutablePath": "/opt/homebrew/bin/mihomo",
+  "quickcatExecutablePath": "/Applications/Quickcat.app/Contents/MacOS/Quickcat",
+  "tunEnabled": true,
+  "upstream": {
+    "host": "127.0.0.1",
+    "httpPort": 21081,
+    "socksPort": 21080,
+    "udpEnabled": false
+  }
+}

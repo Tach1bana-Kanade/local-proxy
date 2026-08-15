@@ -1,0 +1,24 @@
+# macOS 自动生成的系统文件
+.DS_Store
+
+# Swift 编译缓存
+.build/
+
+# 本地开发工具文件
+.workbuddy/
+
+# 编译出来的 App
+dist/
+*.app
+
+# 测试和诊断产生的本机信息
+artifacts/
+
+# 压缩包
+*.zip
+
+# 可能包含密码或密钥的文件
+.env
+*.pem
+
+

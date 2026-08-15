@@ -1,0 +1,20 @@
+{
+  "applicationRules": [],
+  "domainRules": [
+    {
+      "action": "QUICKCAT",
+      "enabled": false,
+      "id": "00000000-0000-0000-0000-000000000001",
+      "match": "suffix",
+      "value": "example.com"
+    }
+  ],
+  "failurePolicy": "block",
+  "quickcatExecutablePath": "/Applications/Quickcat.app/Contents/MacOS/Quickcat",
+  "upstream": {
+    "host": "127.0.0.1",
+    "httpPort": 21081,
+    "socksPort": 21080,
+    "udpEnabled": false
+  }
+}
