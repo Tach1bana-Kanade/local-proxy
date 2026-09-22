@@ -64,7 +64,7 @@ public struct PACTransaction {
         if !allowConflicts {
             let conflicts = zip(current, snapshot.services).compactMap { current, original -> String? in
                 if case .conflict = SystemPACPlanner.restoreDecision(
-                    current: current, original: original, managedPACURL: snapshot.managedPACURL
+                    current: current, original: original, managedPACURL: snapshot.managedPACURL, ownedPACURLs: snapshot.ownedPACURLs ?? []
                 ) {
                     let currentText = current.enabled ? (current.url ?? "已启用（无 URL）") : "关闭"
                     let originalText = original.enabled ? (original.url ?? "已启用（无 URL）") : "关闭"
@@ -81,7 +81,7 @@ public struct PACTransaction {
                 let decision = SystemPACPlanner.restoreDecision(
                     current: current[index],
                     original: snapshot.services[index],
-                    managedPACURL: snapshot.managedPACURL
+                    managedPACURL: snapshot.managedPACURL, ownedPACURLs: snapshot.ownedPACURLs ?? []
                 )
                 if decision == .alreadyRestored { continue }
                 restoredIndices.append(index)
@@ -97,6 +97,32 @@ public struct PACTransaction {
                 service: service, underlying: error.localizedDescription, rollbackFailures: failures
             )
         }
+    }
+
+    /// Journal both exact URLs before changing any service; never replace the original snapshot.
+    public func revise(_ snapshot: NetworkServiceProxySnapshot, newURL: String,
+                       journal: (NetworkServiceProxySnapshot) throws -> Void) throws -> NetworkServiceProxySnapshot {
+        let states = try snapshot.services.map { try client.currentState(for: $0.serviceName) }
+        guard states.allSatisfy({ $0.enabled && $0.url == snapshot.managedPACURL }) else {
+            throw PACTransactionError.restoreConflict(states.filter { !$0.enabled || $0.url != snapshot.managedPACURL }.map(\.serviceName))
+        }
+        var next = snapshot
+        next.ownedPACURLs = Array(Set((snapshot.ownedPACURLs ?? []) + [snapshot.managedPACURL, newURL])).sorted()
+        next.managedPACURL = newURL
+        try journal(next)
+        var attempted: [NetworkServicePACState] = []
+        do {
+            for state in states {
+                attempted.append(state)
+                try client.setState(.init(serviceName: state.serviceName, enabled: true, url: newURL))
+            }
+        } catch {
+            let failures = rollback(attempted.reversed())
+            if failures.isEmpty { try journal(snapshot) }
+            throw PACTransactionError.applyFailed(service: attempted.last?.serviceName ?? "未知", underlying: error.localizedDescription, rollbackFailures: failures)
+        }
+        // Retain old ownership in journal for crash recovery; active revision still must match exactly on future edits.
+        return next
     }
 
     private func rollback<S: Sequence>(_ states: S) -> [String] where S.Element == NetworkServicePACState {

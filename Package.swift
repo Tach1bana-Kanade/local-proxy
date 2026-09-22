@@ -12,7 +12,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "LocalProxyCore", exclude: ["ProxyAppsModels.swift"]),
-        .target(name: "ProxyAppsCore"),
+        .target(name: "ProxyAppsCore", resources: [.process("Resources")]),
         .executableTarget(
             name: "LocalProxyCLI",
             dependencies: ["LocalProxyCore"]
@@ -38,7 +38,7 @@ let package = Package(
         ),
         .testTarget(
             name: "LocalProxyCoreTests",
-            dependencies: ["LocalProxyCore", "ProxyAppsCore"]
+            dependencies: ["LocalProxyCore", "ProxyAppsCore", "LocalProxyApp"]
         ),
     ]
 )

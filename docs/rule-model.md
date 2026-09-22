@@ -1,5 +1,7 @@
 # 规则模型
 
+> 本文保留阶段 0 的历史原型说明，不适用于当前正式 App。正式智能分流使用 ProxyAppsCore + PAC，参见 [README](../README.md) 和 [智能分流开发说明](smart-routing-development.md)，不会启用此处的 Mihomo、TUN 或 fake-ip。
+
 规则文件是 `LocalProxyConfiguration` 的 JSON 编码。
 
 网站规则支持：

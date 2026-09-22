@@ -1,0 +1,20 @@
+{
+  "version": "6f3d128827b45e968335e7472737ff59d58902d0",
+  "downloadedAt": 811739650.499501,
+  "source": "https://github.com/Loyalsoldier/v2ray-rules-dat",
+  "license": "See LICENSE-upstream.txt and UPSTREAM-README.md; upstream repository declares GPL-3.0.",
+  "directSHA256": "b7468926fefea39078e5cf10f1521a27de57aa7fcfa460cadf46902c51dba437",
+  "directLines": 111177,
+  "proxySHA256": "f48a01976038169870c10b317af79f91fda2e2cf8941cb8cd1a6e6eaed497e19",
+  "proxyLines": 27251,
+  "statistics": {
+    "direct": 111169,
+    "proxy": 26981,
+    "unsupported": 159,
+    "conflicts": 119,
+    "duplicates": 0,
+    "rawEntries": 138428
+  },
+  "licenseBlobSHA1": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+  "readmeBlobSHA1": "2d2f18ff1ddf5945a4c69a35e4f82b048394b159"
+}

@@ -51,10 +51,10 @@ public enum SystemPACPlanner {
     public static func restoreDecision(
         current: NetworkServicePACState,
         original: NetworkServicePACState,
-        managedPACURL: String
+        managedPACURL: String, ownedPACURLs: [String] = []
     ) -> PACRestoreDecision {
         if current == original { return .alreadyRestored }
-        if current.enabled && current.url == managedPACURL { return .restore(original) }
+        if current.enabled && (current.url == managedPACURL || current.url.map(ownedPACURLs.contains) == true) { return .restore(original) }
         return .conflict(current: current, original: original)
     }
 }

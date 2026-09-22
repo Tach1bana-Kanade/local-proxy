@@ -4,16 +4,29 @@ import ProxyAppsCore
 
 final class PACContentStore {
     private let lock = NSLock()
-    private var websites: [ManagedWebsite] = []
-
-    func update(_ websites: [ManagedWebsite]) {
-        lock.lock(); defer { lock.unlock() }
-        self.websites = websites
+    private var snapshots: [String: String] = [:]
+    private var latest = ""
+    @discardableResult
+    func stage(_ content: String) -> String {
+        let revision = PACGenerator.revision(content)
+        lock.lock(); snapshots[revision] = content; lock.unlock()
+        return revision
     }
-
-    func content() -> String {
+    func activate(_ revision: String) {
         lock.lock(); defer { lock.unlock() }
-        return PACGenerator.generate(websites: websites)
+        if snapshots[revision] != nil { latest = revision }
+    }
+    func publish(_ content: String) -> String {
+        let revision = stage(content); activate(revision); return revision
+    }
+    func retain(_ revisions: Set<String>) {
+        lock.lock(); defer { lock.unlock() }
+        snapshots = snapshots.filter { revisions.contains($0.key) || $0.key == latest }
+    }
+    var snapshotCount: Int { lock.lock(); defer { lock.unlock() }; return snapshots.count }
+    func content(revision: String?) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return snapshots[revision ?? latest]
     }
 }
 
@@ -33,14 +46,21 @@ enum PACServerError: LocalizedError {
     }
 }
 
-final class PACServer {
+protocol PACServing {
+    func start(preferredPort: UInt16) throws -> UInt16
+    func stop()
+}
+
+final class PACServer: PACServing {
     private let queue = DispatchQueue(label: "com.proxyapps.pac-server")
+    private let clients = DispatchQueue(label: "com.proxyapps.pac-clients", attributes: .concurrent)
+    private let slots = DispatchSemaphore(value: 8)
     private var source: DispatchSourceRead?
     private var listenDescriptor: Int32 = -1
-    private let contentProvider: () -> String
+    private let contentProvider: (String?) -> String?
     private(set) var port: UInt16?
 
-    init(contentProvider: @escaping () -> String) {
+    init(contentProvider: @escaping (String?) -> String?) {
         self.contentProvider = contentProvider
     }
 
@@ -75,7 +95,7 @@ final class PACServer {
         listenDescriptor = descriptor
         port = selectedPort
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
-        source.setEventHandler { [weak self] in self?.acceptConnections() }
+        source.setEventHandler { [weak self] in self?.acceptConnections(descriptor) }
         source.setCancelHandler { close(descriptor) }
         self.source = source
         source.resume()
@@ -103,9 +123,9 @@ final class PACServer {
         guard status == 0 else { throw PACServerError.bind(errno) }
     }
 
-    private func acceptConnections() {
+    private func acceptConnections(_ listening: Int32) {
         while true {
-            let client = accept(listenDescriptor, nil, nil)
+            let client = accept(listening, nil, nil)
             guard client >= 0 else {
                 if errno == EAGAIN || errno == EWOULDBLOCK { return }
                 return
@@ -116,8 +136,11 @@ final class PACServer {
             if flags >= 0 { _ = fcntl(client, F_SETFL, flags & ~O_NONBLOCK) }
             var timeout = timeval(tv_sec: 2, tv_usec: 0)
             setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout.size(ofValue: timeout)))
-            handle(client)
-            close(client)
+            setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout.size(ofValue: timeout)))
+            var noSignal: Int32 = 1
+            setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout.size(ofValue: noSignal)))
+            guard slots.wait(timeout: .now()) == .success else { close(client); continue }
+            clients.async { [self] in handle(client); close(client); slots.signal() }
         }
     }
 
@@ -125,27 +148,32 @@ final class PACServer {
         var received = Data()
         var chunk = [UInt8](repeating: 0, count: 8192)
         // 循环读取直到请求头结束（\r\n\r\n），单次 recv 可能只拿到部分请求。
-        while received.count <= 16384 {
+        let deadline = Date().addingTimeInterval(2)
+        while received.count <= 16384 && Date() < deadline {
             let count = recv(descriptor, &chunk, chunk.count, 0)
             guard count > 0 else { break }
             received.append(contentsOf: chunk.prefix(count))
             if received.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A])) != nil { break }
         }
-        guard !received.isEmpty,
+        guard received.count <= 16384, received.range(of: Data([13, 10, 13, 10])) != nil,
               let request = String(data: received, encoding: .utf8),
               let requestLine = request.split(separator: "\n", maxSplits: 1).first else {
             return
         }
         let parts = requestLine.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ")
-        guard parts.count >= 2, parts[0] == "GET", parts[1] == "/proxy.pac" else {
+        guard parts.count >= 2, parts[0] == "GET", let path = URLComponents(string: String(parts[1])), path.path == "/proxy.pac" else {
             sendResponse(descriptor, status: "404 Not Found", contentType: "text/plain", body: "Not Found")
             return
+        }
+        let revision = path.queryItems?.first(where: { $0.name == "v" })?.value
+        guard let body = contentProvider(revision) else {
+            sendResponse(descriptor, status: "404 Not Found", contentType: "text/plain", body: "Unknown revision"); return
         }
         sendResponse(
             descriptor,
             status: "200 OK",
-            contentType: "application/x-ns-proxy-autoconfig",
-            body: contentProvider()
+            contentType: "application/x-ns-proxy-autoconfig; charset=utf-8",
+            body: body
         )
     }
 
@@ -157,7 +185,8 @@ final class PACServer {
         data.withUnsafeBytes { buffer in
             guard let base = buffer.baseAddress else { return }
             var sent = 0
-            while sent < buffer.count {
+            let deadline = Date().addingTimeInterval(5)
+            while sent < buffer.count && Date() < deadline {
                 let result = Darwin.send(descriptor, base.advanced(by: sent), buffer.count - sent, 0)
                 if result <= 0 { return }
                 sent += result

@@ -5,7 +5,7 @@ import XCTest
 final class ChromiumApplicationDetectorTests: XCTestCase {
     func testDetectsElectronFramework() throws {
         let bundleURL = try makeBundle(bundleIdentifier: "example.electron")
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        // Preserve fixture directory: project policy prohibits recursive deletion.
         try FileManager.default.createDirectory(
             at: bundleURL.appendingPathComponent("Contents/Frameworks/Electron Framework.framework"),
             withIntermediateDirectories: true
@@ -16,14 +16,14 @@ final class ChromiumApplicationDetectorTests: XCTestCase {
 
     func testDetectsKnownChromiumBundleIdentifier() throws {
         let bundleURL = try makeBundle(bundleIdentifier: "com.google.Chrome")
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        // Preserve fixture directory: project policy prohibits recursive deletion.
 
         XCTAssertEqual(ChromiumApplicationDetector.detect(bundleURL: bundleURL), .chromium)
     }
 
     func testDetectsChromiumFrameworkByName() throws {
         let bundleURL = try makeBundle(bundleIdentifier: "example.chromium")
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        // Preserve fixture directory: project policy prohibits recursive deletion.
         try FileManager.default.createDirectory(
             at: bundleURL.appendingPathComponent("Contents/Frameworks/Example Chromium Framework.framework"),
             withIntermediateDirectories: true
@@ -34,7 +34,7 @@ final class ChromiumApplicationDetectorTests: XCTestCase {
 
     func testDetectsCrashpadHandlerInsideFramework() throws {
         let bundleURL = try makeBundle(bundleIdentifier: "example.crashpad")
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        // Preserve fixture directory: project policy prohibits recursive deletion.
         let handlerURL = bundleURL.appendingPathComponent(
             "Contents/Frameworks/Example.framework/Helpers/chrome_crashpad_handler"
         )
@@ -49,7 +49,7 @@ final class ChromiumApplicationDetectorTests: XCTestCase {
 
     func testValidNonChromiumBundleIsNotDetected() throws {
         let bundleURL = try makeBundle(bundleIdentifier: "com.apple.Safari")
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        // Preserve fixture directory: project policy prohibits recursive deletion.
 
         XCTAssertEqual(ChromiumApplicationDetector.detect(bundleURL: bundleURL), .notChromium)
     }

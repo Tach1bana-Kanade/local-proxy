@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import ProxyAppsCore
 
 enum SystemPACManagerError: LocalizedError {
@@ -37,7 +38,7 @@ final class SystemPACManager: SystemPACClient {
         if let url = state.url {
             _ = try checked(["-setautoproxyurl", state.serviceName, url])
         } else if !state.enabled {
-            _ = try? checked(["-setautoproxyurl", state.serviceName, ""])
+            _ = try checked(["-setautoproxyurl", state.serviceName, ""])
         }
         _ = try checked(["-setautoproxystate", state.serviceName, state.enabled ? "on" : "off"])
     }
@@ -71,8 +72,24 @@ final class SystemPACManager: SystemPACClient {
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        // A hung networksetup must not leave an enable/restore transaction waiting forever.
+        let timeout = DispatchWorkItem { if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 10, execute: timeout)
+        var data = Data()
+        while true {
+            let chunk = pipe.fileHandleForReading.availableData
+            if chunk.isEmpty { break }
+            if data.count + chunk.count > 65_536 {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                break
+            }
+            data.append(chunk)
+        }
+        try? pipe.fileHandleForReading.close()
+        process.waitUntilExit(); timeout.cancel()
+        if process.terminationReason == .uncaughtSignal {
+            throw SystemPACManagerError.commandFailed(arguments: arguments, output: "命令超时、输出超限或被终止；恢复记录已保留。")
+        }
         return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 }

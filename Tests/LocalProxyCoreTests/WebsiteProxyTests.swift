@@ -11,7 +11,7 @@ final class WebsiteProxyTests: XCTestCase {
     }
 
     func testNormalizerRejectsUnsafeAndLocalInputs() {
-        let inputs = ["ftp://example.com", "https://u:p@example.com", "https://example.com:8080", "example.com/path", "*.example.com", ".example.com", "localhost", "host.local", "127.0.0.1", "1.1.1.1", "bad_domain.com", "例子.测试", "example.com\";alert(1)//"]
+        let inputs = ["ftp://example.com", "https://u:p@example.com", "https://example.com:8080", "example.com/path", "*.example.com", ".example.com", "localhost", "host.local", "x.localhost", "router.home.arpa", "127.1", "0177.0.0.1", "127.0.0.1", "1.1.1.1", "bad_domain.com", "例子.测试", "example.com\";alert(1)//"]
         for input in inputs {
             XCTAssertThrowsError(try WebsiteNormalizer.normalize(input), input)
         }
@@ -37,9 +37,9 @@ final class WebsiteProxyTests: XCTestCase {
         let rules = [ManagedWebsite(domain: "b.example.com"), ManagedWebsite(domain: "a.example.com")]
         let pac = PACGenerator.generate(websites: rules)
         XCTAssertEqual(pac, PACGenerator.generate(websites: rules.reversed()))
-        XCTAssertTrue(pac.contains("[\"a.example.com\",\"b.example.com\"]"))
+        XCTAssertTrue(PACGenerator.shouldProxy(host: "a.example.com", websites: rules))
         XCTAssertFalse(pac.contains("PROXY 127.0.0.1:21081; DIRECT"))
-        XCTAssertTrue(PACGenerator.generate(websites: []).contains("var proxyDomains = [];"))
+        XCTAssertFalse(PACGenerator.shouldProxy(host: "unknown.test", websites: []))
         let hostile = PACGenerator.generate(websites: [.init(domain: "example.com\"; return \"PROXY evil\"")])
         XCTAssertTrue(hostile.contains("example.com\\\"; return "))
         XCTAssertEqual(hostile.components(separatedBy: "return \"PROXY 127.0.0.1:21081\"").count, 2)

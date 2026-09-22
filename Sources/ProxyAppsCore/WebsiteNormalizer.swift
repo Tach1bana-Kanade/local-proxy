@@ -65,7 +65,7 @@ public enum WebsiteNormalizer {
         var domain = candidate.lowercased()
         while domain.hasSuffix(".") { domain.removeLast() }
         guard !domain.isEmpty else { throw WebsiteNormalizationError.invalidDomain }
-        if domain == "localhost" || domain.hasSuffix(".local") {
+        if domain == "localhost" || domain.hasSuffix(".local") || domain.hasSuffix(".lan") || domain.hasSuffix(".localhost") || domain == "home.arpa" || domain.hasSuffix(".home.arpa") {
             throw WebsiteNormalizationError.localAddressNotAllowed
         }
         guard !isIPAddress(domain) else {
@@ -74,7 +74,7 @@ public enum WebsiteNormalizer {
         }
         guard domain.utf8.count <= 253 else { throw WebsiteNormalizationError.invalidDomain }
         let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
-        guard labels.count >= 2, labels.allSatisfy(validLabel) else {
+        guard labels.count >= 2, labels.last?.allSatisfy(\.isNumber) == false, labels.allSatisfy(validLabel) else {
             throw WebsiteNormalizationError.invalidDomain
         }
         return domain

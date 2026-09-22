@@ -1,5 +1,7 @@
 # 安全设计
 
+> 本文保留阶段 0 的历史原型说明，不适用于当前正式 App。正式智能分流使用 ProxyAppsCore + PAC，参见 [README](../README.md) 和 [智能分流开发说明](smart-routing-development.md)，不会启用此处的 Mihomo、TUN 或 fake-ip。
+
 - 默认出口是 `DIRECT`，最终规则固定为 `MATCH,DIRECT`。
 - 回环、局域网、链路本地、保留地址、Quickcat 和 Mihomo 自身规则优先直连，避免代理循环。进程路径优先，并以精确进程名作为安装路径变化时的安全兜底。
 - 外部控制器固定监听 `127.0.0.1:9090`，每次生成配置时使用新的 256-bit 随机令牌。

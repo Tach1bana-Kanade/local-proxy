@@ -24,8 +24,13 @@ final class ProxyAppsManager {
     private let restoreStateURL: URL
     private let logURL: URL
 
-    init() {
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    private let routingWriter: (Data, URL) throws -> Void
+    private let quickcatInspection: (@Sendable () async -> QuickcatStatus)?
+
+    init(directory: URL? = nil, quickcatInspection: (@Sendable () async -> QuickcatStatus)? = nil, routingWriter: @escaping (Data, URL) throws -> Void = { try PrivateFile.write($0, to: $1) }) {
+        self.routingWriter = routingWriter
+        self.quickcatInspection = quickcatInspection
+        let base = directory ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Proxy Apps", isDirectory: true)
         appSupportDirectory = base
         applicationsURL = base.appendingPathComponent("applications.json")
@@ -33,6 +38,14 @@ final class ProxyAppsManager {
         pacSettingsURL = base.appendingPathComponent("pac-settings.json")
         restoreStateURL = base.appendingPathComponent("pac-restore-state.json")
         logURL = base.appendingPathComponent("errors.log")
+    }
+
+    var routingStore: RoutingConfigurationStore { RoutingConfigurationStore(directory: appSupportDirectory, writer: routingWriter) }
+    var ruleSetStore: RuleSetStore { RuleSetStore(directory: appSupportDirectory) }
+    var hasRestoreSnapshot: Bool { fileManager.fileExists(atPath: restoreStateURL.path) }
+    func readRestoreSnapshot() throws -> NetworkServiceProxySnapshot? {
+        guard hasRestoreSnapshot else { return nil }
+        return try JSONDecoder().decode(NetworkServiceProxySnapshot.self, from: Data(contentsOf: restoreStateURL))
     }
 
     func loadApplications() -> [ManagedApplication] {
@@ -120,14 +133,17 @@ final class ProxyAppsManager {
         return ChromiumApplicationDetector.detect(bundleURL: url).isChromium
     }
 
-    func launch(_ application: ManagedApplication, usingProxy: Bool) async throws {
+    func launch(_ application: ManagedApplication, usingProxy: Bool, pacURL: String? = nil) async throws {
         guard !isRunning(application) else { throw ProxyAppsError.applicationAlreadyRunning }
         let url = URL(fileURLWithPath: application.bundlePath, isDirectory: true)
         guard fileManager.fileExists(atPath: url.path) else { throw ProxyAppsError.applicationMissing(url.path) }
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
-        if usingProxy {
+        if let pacURL {
+            guard isChromiumApplication(application) else { throw RoutingError.invalid("该应用未验证支持 PAC 启动参数") }
+            configuration.arguments = ProxyLaunchArguments.websiteRules(pacURL: pacURL)
+        } else if usingProxy {
             configuration.environment = ProxyEnvironment.values
             let detection = ChromiumApplicationDetector.detect(bundleURL: url)
             switch detection {
@@ -155,7 +171,8 @@ final class ProxyAppsManager {
     }
 
     func inspectQuickcat() async -> QuickcatStatus {
-        await withCheckedContinuation { continuation in
+        if let quickcatInspection { return await quickcatInspection() }
+        return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let probe = PortProbe()
                 continuation.resume(returning: QuickcatStatus(

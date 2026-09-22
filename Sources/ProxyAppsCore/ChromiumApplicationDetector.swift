@@ -95,6 +95,7 @@ public enum ChromiumApplicationDetector {
 }
 
 public enum ProxyLaunchArguments {
+    public static func websiteRules(pacURL: String) -> [String] { ["--proxy-pac-url=\(pacURL)"] }
     /// HTTP 代理地址与环境变量共用同一来源，避免两套端口配置发生偏差。
     public static func arguments(
         usingProxy: Bool,
