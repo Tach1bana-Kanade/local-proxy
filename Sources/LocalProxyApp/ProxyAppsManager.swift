@@ -138,13 +138,30 @@ final class ProxyAppsManager {
         let url = URL(fileURLWithPath: application.bundlePath, isDirectory: true)
         guard fileManager.fileExists(atPath: url.path) else { throw ProxyAppsError.applicationMissing(url.path) }
 
+        if application.bundleIdentifier == "com.google.Chrome" {
+            let codexHome = ProcessInfo.processInfo.environment["CODEX_HOME"]
+                .map { URL(fileURLWithPath: $0, isDirectory: true) }
+                ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
+            try CodexProxyInheritance.prepare(configURL: codexHome.appendingPathComponent("config.toml"))
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
+        var environment = CodexProxyInheritance.launchEnvironment(
+            usingProxy: usingProxy, pacURL: pacURL, application: application
+        ) ?? [:]
+        if CodexProxyToolLauncher.isRequired(for: application, usingProxy: usingProxy) {
+            let executable = url.appendingPathComponent("Contents/Resources/cua_node/bin/node_repl")
+            let launcher = try CodexProxyToolLauncher.prepare(
+                executableURL: executable,
+                directory: appSupportDirectory.appendingPathComponent("runtime", isDirectory: true)
+            )
+            environment[CodexProxyToolLauncher.overrideKey] = launcher.path
+        }
+        if !environment.isEmpty { configuration.environment = environment }
         if let pacURL {
             guard isChromiumApplication(application) else { throw RoutingError.invalid("该应用未验证支持 PAC 启动参数") }
             configuration.arguments = ProxyLaunchArguments.websiteRules(pacURL: pacURL)
         } else if usingProxy {
-            configuration.environment = ProxyEnvironment.values
             let detection = ChromiumApplicationDetector.detect(bundleURL: url)
             switch detection {
             case .chromium:

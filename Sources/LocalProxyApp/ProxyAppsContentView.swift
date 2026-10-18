@@ -356,6 +356,13 @@ private struct ApplicationRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if application.bundleIdentifier == "com.google.Chrome" {
+                    Text("按网站规则启动时，ChatGPT 侧边栏后台仍使用 Quickcat 全部代理")
+                        .font(.caption2).foregroundStyle(.secondary)
+                } else if application.bundleIdentifier == "com.openai.codex" {
+                    Text("代理启动同时覆盖 Chrome 控制工具")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             }
             Spacer()
             Button("全部代理启动") {
