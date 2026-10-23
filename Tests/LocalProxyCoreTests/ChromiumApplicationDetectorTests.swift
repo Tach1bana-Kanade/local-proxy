@@ -21,6 +21,27 @@ final class ChromiumApplicationDetectorTests: XCTestCase {
         XCTAssertEqual(ChromiumApplicationDetector.detect(bundleURL: bundleURL), .chromium)
     }
 
+    func testCodexWithRenamedFrameworkReceivesProxyLaunchArguments() throws {
+        let bundleURL = try makeBundle(bundleIdentifier: "com.openai.codex")
+        // Newer Codex builds renamed both the Chromium framework and crash handler.
+        // Preserve fixture directory: project policy prohibits recursive deletion.
+        let handlerURL = bundleURL.appendingPathComponent(
+            "Contents/Frameworks/Codex Framework.framework/Versions/155.0.8059.80/Helpers/browser_crashpad_handler"
+        )
+        try FileManager.default.createDirectory(
+            at: handlerURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        XCTAssertTrue(FileManager.default.createFile(atPath: handlerURL.path, contents: Data()))
+
+        let detection = ChromiumApplicationDetector.detect(bundleURL: bundleURL)
+        XCTAssertEqual(detection, .chromium)
+        XCTAssertEqual(
+            ProxyLaunchArguments.arguments(usingProxy: true, isChromium: detection.isChromium),
+            ["--proxy-server=http://127.0.0.1:21081"]
+        )
+    }
+
     func testDetectsChromiumFrameworkByName() throws {
         let bundleURL = try makeBundle(bundleIdentifier: "example.chromium")
         // Preserve fixture directory: project policy prohibits recursive deletion.

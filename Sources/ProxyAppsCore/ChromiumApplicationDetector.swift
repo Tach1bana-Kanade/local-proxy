@@ -18,6 +18,7 @@ public enum ChromiumApplicationDetector {
         "com.microsoft.edgemac.Beta",
         "com.microsoft.edgemac.Canary",
         "com.microsoft.edgemac.Dev",
+        "com.openai.codex",
         "com.operasoftware.Opera",
         "com.operasoftware.OperaDeveloper",
         "com.operasoftware.OperaNext",

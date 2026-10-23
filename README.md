@@ -38,6 +38,8 @@ swift build --disable-sandbox -c release --product LocalProxyApp
 | 全部代理启动 | 使用原有代理环境变量；Chromium 另外使用固定 `--proxy-server`，不按网站规则分流 |
 | 按网站规则启动 | 仅 Chromium 显示；要求分流已启用且 PAC 自检通过，网页使用当前 `--proxy-pac-url`；Google Chrome 同时给原生扩展/ChatGPT 侧边栏后台注入 Quickcat 代理环境，其他应用不注入固定代理环境 |
 
+新版 Codex 使用 `Codex Framework.framework` 与 `browser_crashpad_handler`，按 `com.openai.codex` 识别为 Chromium 应用。“全部代理启动”会同时设置代理环境与 `--proxy-server=http://127.0.0.1:21081`，使界面网络层也使用 Quickcat。仅继承环境变量不能证明界面已走代理。Codex 应使用“全部代理启动”；“按网站规则启动”仅为界面提供 PAC，不保证其 CLI 后台使用代理。
+
 ChatGPT（Codex）“全部代理启动”通过桌面端已有的 `CODEX_NODE_REPL_PATH` 运行时入口，使用私有启动脚本运行原版浏览器控制工具。桌面端重新生成 MCP 配置时仍保留这个启动路径；脚本仅在父后台进程使用 Quickcat 时补回 8 个代理变量，避免共享配置使普通启动的 Chrome 后台被强制代理。脚本位于数据目录 `runtime/`，目录/脚本权限为 `0700`，按内容摘要命名；不修改 ChatGPT 应用包或浏览器原生连接程序。更改启动方式必须完全退出重启桌面端，既有控制工具不能动态改变进程环境。该入口已在本机桌面端 26.930.31730 中确认，未来版本若改变运行时入口需重新验证。
 
 Google Chrome 启动前仍会为现有 `~/.codex/config.toml` 的 `mcp_servers.node_repl` 添加 8 个代理变量的 `env_vars` 继承许可，供 Chrome 侧边栏后台使用；这项设置不能单独修复桌面端自动生成的控制工具配置。仅移除早期修复留下的相同 Quickcat 固定值，其他显式覆盖保留。修改前在同目录保留 `config-before-proxyapps-UUID.toml` 私有备份；重复启动不再修改，缺少服务配置时不创建不完整服务；不支持的 TOML 格式报错并保留原文。
